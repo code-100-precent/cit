@@ -1,0 +1,367 @@
+package storage
+
+import (
+	"crypto/sha1"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"time"
+)
+
+// Commit 表示一个提交
+type Commit struct {
+	ID        string    `json:"id"`
+	Message   string    `json:"message"`
+	Author    string    `json:"author"`
+	Timestamp time.Time `json:"timestamp"`
+	ParentID  string    `json:"parent_id"`
+	TreeHash  string    `json:"tree_hash"`
+}
+
+// Branch 表示一个分支
+type Branch struct {
+	Name string `json:"name"`
+	Head string `json:"head"` // 指向的提交ID
+}
+
+// Remote 表示远程仓库
+type Remote struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
+// Storage 管理Git仓库的数据存储
+type Storage struct {
+	basePath string
+}
+
+// NewStorage 创建新的存储实例
+func NewStorage(basePath string) (*Storage, error) {
+	storage := &Storage{
+		basePath: basePath,
+	}
+
+	// 确保必要的目录存在
+	dirs := []string{
+		filepath.Join(basePath, "objects"),
+		filepath.Join(basePath, "refs", "heads"),
+		filepath.Join(basePath, "refs", "tags"),
+	}
+
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, fmt.Errorf("创建目录失败: %v", err)
+		}
+	}
+
+	return storage, nil
+}
+
+// StoreObject 存储文件对象
+func (s *Storage) StoreObject(hash, filePath string) error {
+	// 创建对象目录
+	objDir := filepath.Join(s.basePath, "objects", hash[:2])
+	if err := os.MkdirAll(objDir, 0755); err != nil {
+		return fmt.Errorf("创建对象目录失败: %v", err)
+	}
+
+	// 复制文件到对象存储
+	objPath := filepath.Join(objDir, hash[2:])
+	srcFile, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("打开源文件失败: %v", err)
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(objPath)
+	if err != nil {
+		return fmt.Errorf("创建目标文件失败: %v", err)
+	}
+	defer dstFile.Close()
+
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return fmt.Errorf("复制文件失败: %v", err)
+	}
+
+	return nil
+}
+
+// AddToStaging 添加文件到暂存区
+func (s *Storage) AddToStaging(filePath, hash string) error {
+	stagingFile := filepath.Join(s.basePath, "staging.json")
+	
+	// 读取现有暂存区
+	staging := make(map[string]string)
+	if data, err := os.ReadFile(stagingFile); err == nil {
+		if err := json.Unmarshal(data, &staging); err != nil {
+			return fmt.Errorf("解析暂存区失败: %v", err)
+		}
+	}
+
+	// 添加新文件
+	staging[filePath] = hash
+
+	// 保存暂存区
+	return s.saveStaging(staging)
+}
+
+// GetStaging 获取暂存区内容
+func (s *Storage) GetStaging() (map[string]string, error) {
+	stagingFile := filepath.Join(s.basePath, "staging.json")
+	
+	staging := make(map[string]string)
+	if data, err := os.ReadFile(stagingFile); err == nil {
+		if err := json.Unmarshal(data, &staging); err != nil {
+			return nil, fmt.Errorf("解析暂存区失败: %v", err)
+		}
+	}
+
+	return staging, nil
+}
+
+// ClearStaging 清空暂存区
+func (s *Storage) ClearStaging() error {
+	stagingFile := filepath.Join(s.basePath, "staging.json")
+	return os.Remove(stagingFile)
+}
+
+// StoreCommit 存储提交对象
+func (s *Storage) StoreCommit(commit *Commit) error {
+	// 将提交序列化为JSON
+	data, err := json.MarshalIndent(commit, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化提交失败: %v", err)
+	}
+
+	// 计算提交哈希
+	hash := fmt.Sprintf("%x", sha1.Sum(data))
+
+	// 创建对象目录
+	objDir := filepath.Join(s.basePath, "objects", hash[:2])
+	if err := os.MkdirAll(objDir, 0755); err != nil {
+		return fmt.Errorf("创建对象目录失败: %v", err)
+	}
+
+	// 保存提交对象
+	objPath := filepath.Join(objDir, hash[2:])
+	if err := os.WriteFile(objPath, data, 0644); err != nil {
+		return fmt.Errorf("保存提交对象失败: %v", err)
+	}
+
+	// 更新提交ID
+	commit.ID = hash
+
+	// 保存到提交索引
+	return s.saveCommitIndex(commit)
+}
+
+// GetCommitHistory 获取提交历史
+func (s *Storage) GetCommitHistory() ([]*Commit, error) {
+	indexFile := filepath.Join(s.basePath, "commits.json")
+	
+	var commits []*Commit
+	if data, err := os.ReadFile(indexFile); err == nil {
+		if err := json.Unmarshal(data, &commits); err != nil {
+			return nil, fmt.Errorf("解析提交索引失败: %v", err)
+		}
+	}
+
+	// 按时间排序（最新的在前）
+	sort.Slice(commits, func(i, j int) bool {
+		return commits[i].Timestamp.After(commits[j].Timestamp)
+	})
+
+	return commits, nil
+}
+
+// CreateBranch 创建新分支
+func (s *Storage) CreateBranch(branch *Branch) error {
+	branches, err := s.ListBranches()
+	if err != nil {
+		return err
+	}
+
+	// 检查分支是否已存在
+	for _, existingBranch := range branches {
+		if existingBranch.Name == branch.Name {
+			return fmt.Errorf("分支 '%s' 已存在", branch.Name)
+		}
+	}
+
+	// 添加新分支
+	branches = append(branches, branch)
+
+	// 保存分支列表
+	return s.saveBranches(branches)
+}
+
+// ListBranches 列出所有分支
+func (s *Storage) ListBranches() ([]*Branch, error) {
+	branchesFile := filepath.Join(s.basePath, "branches.json")
+	
+	var branches []*Branch
+	if data, err := os.ReadFile(branchesFile); err == nil {
+		if err := json.Unmarshal(data, &branches); err != nil {
+			return nil, fmt.Errorf("解析分支列表失败: %v", err)
+		}
+	}
+
+	return branches, nil
+}
+
+// GetBranchHead 获取分支头
+func (s *Storage) GetBranchHead(branchName string) (string, error) {
+	branches, err := s.ListBranches()
+	if err != nil {
+		return "", err
+	}
+
+	for _, branch := range branches {
+		if branch.Name == branchName {
+			return branch.Head, nil
+		}
+	}
+
+	return "", fmt.Errorf("分支 '%s' 不存在", branchName)
+}
+
+// UpdateBranchHead 更新分支头
+func (s *Storage) UpdateBranchHead(branchName, commitID string) error {
+	branches, err := s.ListBranches()
+	if err != nil {
+		return err
+	}
+
+	// 查找并更新分支
+	for _, branch := range branches {
+		if branch.Name == branchName {
+			branch.Head = commitID
+			return s.saveBranches(branches)
+		}
+	}
+
+	return fmt.Errorf("分支 '%s' 不存在", branchName)
+}
+
+// 私有方法
+
+func (s *Storage) saveStaging(staging map[string]string) error {
+	stagingFile := filepath.Join(s.basePath, "staging.json")
+	data, err := json.MarshalIndent(staging, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(stagingFile, data, 0644)
+}
+
+func (s *Storage) saveCommitIndex(commit *Commit) error {
+	indexFile := filepath.Join(s.basePath, "commits.json")
+	
+	var commits []*Commit
+	if data, err := os.ReadFile(indexFile); err == nil {
+		if err := json.Unmarshal(data, &commits); err != nil {
+			return fmt.Errorf("解析提交索引失败: %v", err)
+		}
+	}
+
+	// 检查是否已存在
+	for i, existingCommit := range commits {
+		if existingCommit.ID == commit.ID {
+			commits[i] = commit
+			return s.saveCommits(commits)
+		}
+	}
+
+	// 添加新提交
+	commits = append(commits, commit)
+	return s.saveCommits(commits)
+}
+
+func (s *Storage) saveCommits(commits []*Commit) error {
+	indexFile := filepath.Join(s.basePath, "commits.json")
+	data, err := json.MarshalIndent(commits, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(indexFile, data, 0644)
+}
+
+func (s *Storage) saveBranches(branches []*Branch) error {
+	branchesFile := filepath.Join(s.basePath, "branches.json")
+	data, err := json.MarshalIndent(branches, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(branchesFile, data, 0644)
+}
+
+// AddRemote 添加远程仓库
+func (s *Storage) AddRemote(remote *Remote) error {
+	remotes, err := s.ListRemotes()
+	if err != nil {
+		return err
+	}
+
+	// 检查是否已存在
+	for _, existingRemote := range remotes {
+		if existingRemote.Name == remote.Name {
+			return fmt.Errorf("远程仓库 '%s' 已存在", remote.Name)
+		}
+	}
+
+	// 添加新远程仓库
+	remotes = append(remotes, remote)
+	return s.saveRemotes(remotes)
+}
+
+// ListRemotes 列出所有远程仓库
+func (s *Storage) ListRemotes() ([]*Remote, error) {
+	remotesFile := filepath.Join(s.basePath, "remotes.json")
+	
+	var remotes []*Remote
+	data, err := os.ReadFile(remotesFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// 文件不存在，返回空切片
+			return remotes, nil
+		}
+		return nil, fmt.Errorf("读取远程仓库文件失败: %v", err)
+	}
+	
+	if err := json.Unmarshal(data, &remotes); err != nil {
+		return nil, fmt.Errorf("解析远程仓库列表失败: %v", err)
+	}
+
+	return remotes, nil
+}
+
+func (s *Storage) saveRemotes(remotes []*Remote) error {
+	remotesFile := filepath.Join(s.basePath, "remotes.json")
+	data, err := json.MarshalIndent(remotes, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(remotesFile, data, 0644)
+}
+
+// RemoveRemote 删除远程仓库
+func (s *Storage) RemoveRemote(name string) error {
+	remotes, err := s.ListRemotes()
+	if err != nil {
+		return err
+	}
+
+	// 查找并删除指定的远程仓库
+	for i, remote := range remotes {
+		if remote.Name == name {
+			// 从切片中删除
+			remotes = append(remotes[:i], remotes[i+1:]...)
+			return s.saveRemotes(remotes)
+		}
+	}
+
+	return fmt.Errorf("远程仓库 '%s' 不存在", name)
+}
