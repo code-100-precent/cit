@@ -1,14 +1,1 @@
-# CIT Git模拟器测试文件
-
-这是一个简单的测试文件，用于验证GitHub推送功能。
-
-## 功能特性
-- 仓库初始化
-- 文件暂存和提交
-- 分支管理
-- GitHub推送支持
-
-## 测试目的
-验证CIT Git模拟器能够成功推送到GitHub仓库。
-
-创建时间: 2025-08-21
+IyBDSVQgR2l05qih5ouf5Zmo5rWL6K+V5paH5Lu2DQoNCui/meaYr+S4gOS4queugOWNleeahOa1i+ivleaWh+S7tu+8jOeUqOS6jumqjOivgUdpdEh1YuaOqOmAgeWKn+iDveOAgg0KDQojIyDlip/og73nibnmgKcNCi0g5LuT5bqT5Yid5aeL5YyWDQotIOaWh+S7tuaaguWtmOWSjOaPkOS6pA0KLSDliIbmlK/nrqHnkIYNCi0gR2l0SHVi5o6o6YCB5pSv5oyBDQoNCiMjIOa1i+ivleebrueahA0K6aqM6K+BQ0lUIEdpdOaooeaLn+WZqOiDveWkn+aIkOWKn+aOqOmAgeWIsEdpdEh1YuS7k+W6k+OAgg0KDQrliJvlu7rml7bpl7Q6IDIwMjUtMDgtMjENCg==

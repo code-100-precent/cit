@@ -1,10 +1,1 @@
-module cit
-
-go 1.21
-
-require github.com/spf13/cobra v1.8.1
-
-require (
-	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/spf13/pflag v1.0.7 // indirect
-)
+bW9kdWxlIGNpdAoKZ28gMS4yMQoKcmVxdWlyZSBnaXRodWIuY29tL3NwZjEzL2NvYnJhIHYxLjguMQoKcmVxdWlyZSAoCglnaXRodWIuY29tL2luY29uc2hyZXZlYWJsZS9tb3VzZXRyYXAgdjEuMS4wIC8vIGluZGlyZWN0CglnaXRodWIuY29tL3NwZjEzL3BmbGFnIHYxLjAuNyAvLyBpbmRpcmVjdAopCg==

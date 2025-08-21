@@ -1,15 +1,1 @@
-package main
-
-import (
-	"fmt"
-	"os"
-
-	"cit/cmd"
-)
-
-func main() {
-	if err := cmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "错误: %v\n", err)
-		os.Exit(1)
-	}
-}
+cGFja2FnZSBtYWluDQoNCmltcG9ydCAoDQoJImZtdCINCgkib3MiDQoNCgkiY2l0L2NtZCINCikNCg0KZnVuYyBtYWluKCkgew0KCWlmIGVyciA6PSBjbWQuRXhlY3V0ZSgpOyBlcnIgIT0gbmlsIHsNCgkJZm10LkZwcmludGYob3MuU3RkZXJyLCAi6ZSZ6K+vOiAldlxuIiwgZXJyKQ0KCQlvcy5FeGl0KDEpDQoJfQ0KfQ0K
