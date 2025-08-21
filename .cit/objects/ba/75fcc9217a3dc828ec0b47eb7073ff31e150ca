@@ -1,0 +1,8 @@
+{
+  "id": "69dd372ea5b65b69",
+  "message": "merge: 解决冲突，保留main分支内容，添加历史版本",
+  "author": "user@example.com",
+  "timestamp": "2025-08-21T14:44:23.8820626+08:00",
+  "parent_id": "91a1b71ed33d27bf71059bb6d0ffd9f5fe1f4d6f",
+  "tree_hash": ""
+}
